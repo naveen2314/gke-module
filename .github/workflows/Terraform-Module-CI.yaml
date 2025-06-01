@@ -1,0 +1,67 @@
+name: Terraform Module CI
+on:
+  push:
+    branches:
+        - "*"
+  pull_request:
+    branches:
+        - main
+    types: 
+      - opened
+      - edited
+      - synchronize
+  workflow_run: 
+    workflows: [PR Syntax Check]
+    types: 
+      - completed
+      
+permissions: 
+  contents: read
+  security-events: write
+
+jobs:
+  terraform-ci:
+    name: Terraform Validation and Security Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+      
+      - name: Skip if Release PR
+        run: |
+          COMMIT_MESSAGE=$(git log -1 --pretty=format:"%s")
+          if [[ "$COMMIT_MESSAGE" == *"chore(main): release"* ]]; then
+            echo "Skipping Terraform CI as this is a Release PR merge."
+            exit 0
+          fi
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: latest
+      
+      - name: Terraform Initilization
+        run:  terraform init
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Linter (tflint)
+        uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: latest
+      - run: tflint --init
+
+      - name: Terrascan Security Scan
+        uses: tenable/terrascan-action@main
+        with:
+          iac_type: terraform
+          iac_version: v14
+          policy_type: 'gcp'
+          sarif_upload: true
+          only_warn: true
+          #severity: high,critical
